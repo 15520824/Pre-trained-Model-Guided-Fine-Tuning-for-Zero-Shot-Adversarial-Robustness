@@ -10,6 +10,7 @@ import torch
 import torch.backends.cudnn as cudnn
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import DataLoader, SubsetRandomSampler
+from torchvision.utils import save_image
 # from torchvision.datasets import CIFAR100, CIFAR10, Caltech101, STL10, OxfordIIITPet, DTD
 
 from torchvision.datasets import *
@@ -38,7 +39,7 @@ def parse_option():
     parser.add_argument('--save_freq', type=int, default=50)
     parser.add_argument('--test_freq', type=int, default=3)
     parser.add_argument('--batch_size', type=int, default=256)
-    parser.add_argument('--num_workers', type=int, default=32)
+    parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--learning_rate', type=float, default=5e-5)
     parser.add_argument("--weight_decay", type=float, default=0)
@@ -173,12 +174,6 @@ def main():
         torch.manual_seed(args.seed)
         cudnn.deterministic = True
 
-    imagenet_root = '/data/wangsibo/ImageNet'
-    tinyimagenet_root = '/data/wangsibo/tinyImageNet/tiny-imagenet-200'
-    imgnet_full = imagenet_root
-
-    if args.imagenet_root is not None:
-        imagenet_root = args.imagenet_root
 
     add_prompt_len = 0
 
@@ -280,25 +275,25 @@ def main():
 
     elif args.dataset == 'ImageNet':
         train_dataset = torchvision.datasets.ImageFolder(
-            os.path.join(imagenet_root, 'train'),
+            os.path.join(args.root, 'ImageNet', 'train'),
             transform=preprocess224
         )
 
     elif args.dataset == 'tinyImageNet':
         train_dataset = torchvision.datasets.ImageFolder(
-            root=os.path.join(tinyimagenet_root, 'train'),
+            root=os.path.join(args.root, 'tinyImageNet', 'train'),
             transform=preprocess224_a)
 
     val_dataset_list = []
     if args.evaluate:
-        val_dataset_name = ['cifar10', 'cifar100', 'STL10', 'SUN397', 'Food101',
-                            'oxfordpet', 'flowers102', 'dtd', 'EuroSAT', 'fgvc_aircraft',
-                            'tinyImageNet', 'ImageNet', 'Caltech101', 'Caltech256', 'StanfordCars', 'PCAM']
+        val_dataset_name = ['cifar10', 'cifar100', 'STL10', 'Food101',
+                            'oxfordpet', 'flowers102', 'dtd', 'fgvc_aircraft',
+                            'tinyImageNet']
 
     else:
-        val_dataset_name = ['cifar10', 'cifar100', 'STL10', 'SUN397', 'Food101',
-                            'oxfordpet', 'flowers102', 'dtd', 'EuroSAT', 'fgvc_aircraft',
-                            'tinyImageNet', 'ImageNet', 'Caltech101', 'Caltech256', 'StanfordCars', 'PCAM']
+        val_dataset_name = ['cifar10', 'cifar100', 'STL10', 'Food101',
+                            'oxfordpet', 'flowers102', 'dtd', 'fgvc_aircraft',
+                            'tinyImageNet']
     for each in val_dataset_name:
         if each == 'cifar10':
             val_dataset_list.append(CIFAR10(args.root, transform=preprocess,
@@ -348,12 +343,12 @@ def main():
 
         elif each == 'ImageNet':
             val_dataset_list.append(torchvision.datasets.ImageFolder(
-                os.path.join(imgnet_full, 'val'),
+                os.path.join(args.root, "ImageNet", 'val'),
                 transform=preprocess224))
 
         elif each == 'tinyImageNet':
             val_dataset_list.append(torchvision.datasets.ImageFolder(
-                os.path.join(tinyimagenet_root, 'val'),
+                os.path.join(args.root, 'tinyImageNet', 'val'),
                 transform=preprocess224))
 
     train_sampler = None
@@ -393,7 +388,11 @@ def main():
                 folder2name = load_imagenet_folder2name('imagenet_classes_names.txt')
                 new_class_names = []
                 for class_name in class_names:
-                    new_class_names.append(folder2name[class_name])
+                    if class_name in folder2name:
+                        new_class_names.append(folder2name[class_name])
+                    else:
+                        # Fallback for unexpected folders like 'images' in TinyImageNet val
+                        new_class_names.append(class_name)
                 class_names = new_class_names
 
             class_names = refine_classname(class_names)
@@ -865,6 +864,10 @@ def validate(val_loader_list, val_dataset_name, texts_list, model, model_text, m
                     delta_prompt = attack_pgd(prompter, model, model_text, model_image, add_prompter, criterion,
                                               images, target, text_tokens,
                                               test_stepsize, args.test_numsteps, 'l_inf', epsilon=args.test_eps)
+
+                if i == 0 and os.path.exists('attack'):
+                    save_image(images + delta_prompt, f'attack/{dataset_name}_adv.png')
+                    save_image(images, f'attack/{dataset_name}_clean.png')
 
                 # compute output
                 torch.cuda.empty_cache()
