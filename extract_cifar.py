@@ -34,4 +34,4 @@ def save_cifar100_to_png(file_path, output_dir, num_images=1000):
     print(f"✅ Hoàn thành! Ảnh được lưu tại: {output_dir}")
 
 # Thực hiện trích xuất
-save_cifar100_to_png('./data/cifar-100-python/test', 'extracted_images', num_images=1000)
+save_cifar100_to_png('./cifar100/test', 'extracted_images', num_images=1000)
